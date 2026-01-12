@@ -1,0 +1,13 @@
+[package]
+name = "owo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+clap = "4.5.54"
+ignore = "0.4.25"
+num_cpus = "1.17.0"
+regex = "1.12.2"
+tokio = { version = "1.49.0", features = ["full"] }
+walkdir = "2.5.0"
