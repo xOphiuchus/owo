@@ -16,4 +16,4 @@ clap = { version = "4", features = ["std", "help", "usage", "suggestions"] }
 ignore = "0.4.25"
 num_cpus = "1.17.0"
 regex = "1.12.2"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "fs", "sync"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "fs", "sync", "time"] }

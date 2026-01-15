@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, Command};
 use ignore::WalkBuilder;
 use regex::Regex;
-use std::path::{Path};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::fs;
 use tokio::sync::Semaphore;
@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
         .version("0.1.0")
         .author("xOphiuchus")
         .about("Like tree but outputs file contents to a single markdown file")
-        .override_help("USAGE:\n    owo [OPTIONS] [PATH]\n\nEXAMPLES:\n    owo -o content.md\n    owo -I \"obj|bin|build|dist\" -o content.md -wdf\n    owo --help\n\nFLAGS:\n    -wdf, --with-dotfiles    Include hidden files and directories\n    -h, --help               Print help information\n    -V, --version            Print version information\n\nOPTIONS:\n    -I, --ignore <PATTERNS>    Ignore files/directories matching these patterns (pipe-separated) [default: obj|bin|build|dist|.git|.env|.env.*]\n    -o, --output <FILE>        Output file (required)\n\nARGS:\n    <PATH>                     Directory to traverse [default: current directory]")
+        .override_help("USAGE:\n    owo [OPTIONS] [PATH]\n\nEXAMPLES:\n    owo -o content.md\n    owo -I \"obj|bin|build|dist\" -o content.md -w\n    owo --help\n\nFLAGS:\n    -w, --with-dotfiles    Include hidden files and directories\n    -h, --help             Print help information\n    -V, --version          Print version information\n\nOPTIONS:\n    -I, --ignore <PATTERNS>    Ignore files/directories matching these patterns (pipe-separated) [default: obj|bin|build|dist|.git|.env|.env.*]\n    -o, --output <FILE>        Output file (required)\n\nARGS:\n    <PATH>                     Directory to traverse [default: current directory]")
         .arg(
             Arg::new("ignore")
                 .short('I')
@@ -34,9 +34,8 @@ async fn main() -> Result<()> {
             Arg::new("with_dotfiles")
                 .short('w')
                 .long("with-dotfiles")
-                .alias("wdf")
                 .action(ArgAction::SetTrue)
-                .help("Include dotfiles (hidden files)")
+                .help("Include dotfiles (hidden files and directories)")
         )
         .arg(
             Arg::new("directory")
@@ -60,19 +59,20 @@ async fn main() -> Result<()> {
         e
     })?;
 
-
     let ignore_patterns = matches.get_one::<String>("ignore").unwrap();
     let output_file = matches.get_one::<String>("output").unwrap();
     let with_dotfiles = matches.get_flag("with_dotfiles");
     let directory = matches.get_one::<String>("directory").unwrap();
 
-    let ignore_regex = Regex::new(&format!("({})", ignore_patterns.replace('|', "|")))?;
+    // Create regex properly - anchor it to match whole file names
+    let ignore_regex = Regex::new(&format!("^({})$", ignore_patterns.replace('|', "|")))?;
 
     let output = Arc::new(Mutex::new(String::new()));
     let semaphore = Arc::new(Semaphore::new(num_cpus::get() * 2));
 
+    // Configure the walker properly
     let walker = WalkBuilder::new(directory)
-        .hidden(!with_dotfiles)
+        .hidden(!with_dotfiles)  // This controls whether to respect .hidden files
         .git_ignore(true)
         .build()
         .filter_map(|entry| {
@@ -84,17 +84,15 @@ async fn main() -> Result<()> {
             }
 
             let file_name = path.file_name()?.to_string_lossy().to_string();
+            let relative_path = path.strip_prefix(directory).unwrap_or(path);
+            let path_str = relative_path.to_string_lossy().to_string();
 
-            if ignore_regex.is_match(&file_name) ||
-                path.to_string_lossy().contains("/obj/") ||
-                path.to_string_lossy().contains("/bin/") ||
-                path.to_string_lossy().contains("/build/") ||
-                path.to_string_lossy().contains("/dist/") ||
-                path.starts_with(".git") ||
-                file_name.starts_with(".env") {
+            // Skip if matches ignore patterns (check both file name and path)
+            if ignore_regex.is_match(&file_name) || ignore_regex.is_match(&path_str) {
                 return None;
             }
 
+            // Skip dotfiles if not requested
             if !with_dotfiles && file_name.starts_with('.') && !file_name.starts_with(".git") {
                 return None;
             }
@@ -121,7 +119,7 @@ async fn main() -> Result<()> {
                         output_lock.push_str(ext);
                     }
                     output_lock.push_str("\n");
-                    output_lock.push_str(&content);
+                    output_lock.push_str(&content.trim_end());
                     output_lock.push_str("\n```\n");
                 }
             }));
